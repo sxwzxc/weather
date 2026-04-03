@@ -9,7 +9,7 @@ interface EORequest extends Request {
 }
 
 interface Env {
-  weather: KVNamespace;
+  weather?: any;
 }
 
 export async function onRequest({ request, env }: { request: EORequest; env: Env }) {
@@ -20,22 +20,31 @@ export async function onRequest({ request, env }: { request: EORequest; env: Env
   if (!lat || !lon) {
     return new Response(JSON.stringify({ error: 'Missing latitude or longitude' }), {
       status: 400,
-      headers: { 'content-type': 'application/json; charset=UTF-8' },
+      headers: { 
+        'content-type': 'application/json; charset=UTF-8',
+        'Access-Control-Allow-Origin': '*',
+      },
     });
   }
 
   const cacheKey = `weather:${lat}:${lon}`;
   
   // 尝试从 KV 缓存读取（缓存 30 分钟）
-  const cached = await env.weather.get(cacheKey);
-  if (cached) {
-    return new Response(cached, {
-      headers: {
-        'content-type': 'application/json; charset=UTF-8',
-        'Access-Control-Allow-Origin': '*',
-        'X-Cache': 'HIT',
-      },
-    });
+  if (env.weather) {
+    try {
+      const cached = await env.weather.get(cacheKey);
+      if (cached) {
+        return new Response(cached, {
+          headers: {
+            'content-type': 'application/json; charset=UTF-8',
+            'Access-Control-Allow-Origin': '*',
+            'X-Cache': 'HIT',
+          },
+        });
+      }
+    } catch (e) {
+      console.error('KV read error:', e);
+    }
   }
 
   try {
@@ -61,7 +70,13 @@ export async function onRequest({ request, env }: { request: EORequest; env: Env
     const resultStr = JSON.stringify(result);
     
     // 存入 KV 缓存，TTL 30 分钟
-    await env.weather.put(cacheKey, resultStr, { expirationTtl: 1800 });
+    if (env.weather) {
+      try {
+        await env.weather.put(cacheKey, resultStr, { expirationTtl: 1800 });
+      } catch (e) {
+        console.error('KV write error:', e);
+      }
+    }
 
     return new Response(resultStr, {
       headers: {
@@ -71,9 +86,16 @@ export async function onRequest({ request, env }: { request: EORequest; env: Env
       },
     });
   } catch (error) {
-    return new Response(JSON.stringify({ error: 'Failed to fetch weather data' }), {
+    console.error('Weather API error:', error);
+    return new Response(JSON.stringify({ 
+      error: 'Failed to fetch weather data',
+      details: error instanceof Error ? error.message : String(error)
+    }), {
       status: 500,
-      headers: { 'content-type': 'application/json; charset=UTF-8' },
+      headers: { 
+        'content-type': 'application/json; charset=UTF-8',
+        'Access-Control-Allow-Origin': '*',
+      },
     });
   }
 }

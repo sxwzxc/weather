@@ -22,13 +22,21 @@ export default function WeatherPage() {
     try {
       setLoading(true);
       setError('');
+      console.log('Fetching geo location...');
       const geoData = await fetchGeoLocation();
+      console.log('Geo data:', geoData);
       const { latitude, longitude, cityName } = geoData.eo.geo;
       setLocation({ name: cityName || '当前位置', latitude, longitude });
+      console.log('Fetching weather data for:', latitude, longitude);
       const weather = await fetchWeatherData(latitude, longitude);
+      console.log('Weather data:', weather);
+      if (weather.error) {
+        throw new Error(weather.error + (weather.details ? ': ' + weather.details : ''));
+      }
       setWeatherData(weather);
     } catch (err) {
-      setError('加载天气数据失败，请重试');
+      console.error('Load weather error:', err);
+      setError('加载天气数据失败: ' + (err instanceof Error ? err.message : String(err)));
     } finally {
       setLoading(false);
     }
@@ -42,10 +50,16 @@ export default function WeatherPage() {
       setShowSearch(false);
       setSearchResults([]);
       setSearchQuery('');
+      console.log('Fetching weather for city:', loc);
       const weather = await fetchWeatherData(loc.latitude, loc.longitude);
+      console.log('Weather data:', weather);
+      if (weather.error) {
+        throw new Error(weather.error + (weather.details ? ': ' + weather.details : ''));
+      }
       setWeatherData(weather);
     } catch (err) {
-      setError('加载天气数据失败');
+      console.error('Load weather error:', err);
+      setError('加载天气数据失败: ' + (err instanceof Error ? err.message : String(err)));
     } finally {
       setLoading(false);
     }
