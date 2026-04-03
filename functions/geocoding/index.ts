@@ -11,9 +11,9 @@ export async function onRequest({ request }: { request: Request }) {
 
   try {
     // 添加更多参数以支持更广泛的搜索
-    // language=zh: 中文优先
+    // language=zh: 中文
     // count=30: 增加结果数量
-    const geocodingUrl = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(query)}&count=30&language=zh,en&format=json`;
+    const geocodingUrl = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(query)}&count=30&language=zh&format=json`;
     
     const response = await fetch(geocodingUrl);
     const data = await response.json();

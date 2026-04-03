@@ -14,7 +14,7 @@ export default function CitySearch({ onSelectCity, onClose }: CitySearchProps) {
   const [error, setError] = useState('');
   const debounceRef = useRef<any>(null);
 
-  // 实时搜索：输入后 300ms 自动搜索
+  // 实时搜索：输入后 1 秒自动搜索
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     if (!query.trim()) {
@@ -24,11 +24,18 @@ export default function CitySearch({ onSelectCity, onClose }: CitySearchProps) {
     }
     debounceRef.current = setTimeout(() => {
       doSearch(query.trim());
-    }, 300);
+    }, 1000);
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
   }, [query]);
+
+  const handleKeyDown = (e: any) => {
+    if (e.key === 'Enter' && query.trim()) {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      doSearch(query.trim());
+    }
+  };
 
   const doSearch = async (q: string) => {
     setSearching(true);
@@ -74,7 +81,8 @@ export default function CitySearch({ onSelectCity, onClose }: CitySearchProps) {
             <input
               value={query}
               onChange={e => setQuery(e.target.value)}
-              placeholder="输入城市名称，自动搜索..."
+              onKeyDown={handleKeyDown}
+              placeholder="输入城市名称，按回车搜索..."
               className="w-full bg-gray-700 text-white placeholder-gray-400 border border-gray-600 rounded-lg px-4 py-3 pr-12 outline-none focus:border-blue-500 transition"
               autoFocus
             />
