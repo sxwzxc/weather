@@ -202,15 +202,21 @@ export default function WeatherPage() {
               <div className="flex bg-white/10 rounded-xl p-1 border border-white/10">
                 <button 
                   onClick={() => handleSourceChange('openmeteo')}
-                  className={`px-3 py-1 rounded-lg text-xs transition-all ${dataSource === 'openmeteo' ? 'bg-white/20 text-white font-medium' : 'text-white/60 hover:text-white/80'}`}
+                  className={`px-2 py-1 rounded-lg text-xs transition-all ${dataSource === 'openmeteo' ? 'bg-white/20 text-white font-medium' : 'text-white/60 hover:text-white/80'}`}
                 >
                   🌍 Open-Meteo
                 </button>
                 <button 
                   onClick={() => handleSourceChange('qweather')}
-                  className={`px-3 py-1 rounded-lg text-xs transition-all ${dataSource === 'qweather' ? 'bg-white/20 text-white font-medium' : 'text-white/60 hover:text-white/80'}`}
+                  className={`px-2 py-1 rounded-lg text-xs transition-all ${dataSource === 'qweather' ? 'bg-white/20 text-white font-medium' : 'text-white/60 hover:text-white/80'}`}
                 >
-                  🇨🇳 和风天气
+                  🇨🇳 和风
+                </button>
+                <button 
+                  onClick={() => handleSourceChange('owm')}
+                  className={`px-2 py-1 rounded-lg text-xs transition-all ${dataSource === 'owm' ? 'bg-white/20 text-white font-medium' : 'text-white/60 hover:text-white/80'}`}
+                >
+                  🌐 OWM
                 </button>
               </div>
               {needsRefresh && (
@@ -534,7 +540,7 @@ export default function WeatherPage() {
 
           {/* 页脚 */}
           <div className="text-center text-white/30 text-xs pt-6 pb-4 space-y-1">
-            <p>数据来源: {weatherData.data_source === 'QWeather' ? '和风天气 API' : 'Open-Meteo API'} | 空气质量: {weatherData.data_source === 'QWeather' ? '和风天气 AQ' : 'Open-Meteo AQ'}</p>
+            <p>数据来源: {weatherData.data_source === 'QWeather' ? '和风天气 API' : weatherData.data_source === 'OpenWeatherMap' ? 'OpenWeatherMap API' : 'Open-Meteo API'}</p>
             <p>Powered by EdgeOne Pages {useGPS ? '• 📍 GPS定位' : ''}</p>
             <a href="/geoInfo" className="text-white/40 hover:text-white/60 transition inline-block mt-2">📍 GeoInfo 页面 →</a>
           </div>

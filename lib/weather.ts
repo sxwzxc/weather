@@ -168,7 +168,7 @@ const LAST_LOCATION_KEY = 'weather_last_location';
 const WEATHER_CACHE_KEY = 'weather_cache_data';
 const DATA_SOURCE_KEY = 'weather_data_source';
 
-export type WeatherDataSource = 'openmeteo' | 'qweather';
+export type WeatherDataSource = 'openmeteo' | 'qweather' | 'owm';
 
 export async function getSavedLocations(): Promise<SavedLocation[]> {
   try {
@@ -267,7 +267,8 @@ export function setLocalWeatherCache(locationId: string, data: any) {
 // ===== API 调用 =====
 export const fetchWeatherData = async (lat: number, lon: number, forceRefresh = false, source: WeatherDataSource = 'openmeteo') => {
   const host = typeof window !== 'undefined' && process.env.NODE_ENV === 'development' ? process.env.NEXT_PUBLIC_API_URL : '';
-  const endpoint = source === 'qweather' ? '/qweather' : '/weather';
+  const endpointMap: Record<WeatherDataSource, string> = { openmeteo: '/weather', qweather: '/qweather', owm: '/owm' };
+  const endpoint = endpointMap[source] || '/weather';
   const url = `${host}${endpoint}?lat=${lat}&lon=${lon}${forceRefresh ? '&refresh=true' : ''}`;
   const res = await fetch(url);
   const data = await res.json();
