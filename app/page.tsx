@@ -40,19 +40,32 @@ export default function WeatherPage() {
     setSavedLocs(locs);
   };
 
-  const requestLocationPermission = () => {
+  const requestLocationPermission = async () => {
     if ('geolocation' in navigator) {
       navigator.geolocation.getCurrentPosition(
-        (position) => {
+        async (position) => {
           const { latitude, longitude } = position.coords;
-          const loc: SavedLocation = {
-            id: makeLocationId(latitude, longitude),
-            name: '当前位置（GPS）',
-            latitude,
-            longitude,
-          };
           setUseGPS(true);
-          loadWeatherForLocation(loc, false);
+          
+          // 使用反向地理编码获取城市名称
+          try {
+            const geoData = await fetchGeoLocation();
+            const loc: SavedLocation = {
+              id: makeLocationId(latitude, longitude),
+              name: geoData.eo.geo.cityName || '当前位置',
+              latitude,
+              longitude,
+            };
+            loadWeatherForLocation(loc, false);
+          } catch {
+            const loc: SavedLocation = {
+              id: makeLocationId(latitude, longitude),
+              name: '当前位置',
+              latitude,
+              longitude,
+            };
+            loadWeatherForLocation(loc, false);
+          }
         },
         () => {
           loadWeatherByGeo();
