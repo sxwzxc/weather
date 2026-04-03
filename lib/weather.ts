@@ -166,6 +166,9 @@ export interface CitySearchOptions {
 
 const LAST_LOCATION_KEY = 'weather_last_location';
 const WEATHER_CACHE_KEY = 'weather_cache_data';
+const DATA_SOURCE_KEY = 'weather_data_source';
+
+export type WeatherDataSource = 'openmeteo' | 'qweather';
 
 export async function getSavedLocations(): Promise<SavedLocation[]> {
   try {
@@ -223,6 +226,17 @@ export function setLastLocation(loc: SavedLocation) {
   localStorage.setItem(LAST_LOCATION_KEY, JSON.stringify(loc));
 }
 
+// ===== 数据源管理 =====
+export function getDataSource(): WeatherDataSource {
+  if (typeof window === 'undefined') return 'openmeteo';
+  return (localStorage.getItem(DATA_SOURCE_KEY) as WeatherDataSource) || 'openmeteo';
+}
+
+export function setDataSource(source: WeatherDataSource) {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem(DATA_SOURCE_KEY, source);
+}
+
 // ===== 本地天气缓存 =====
 interface WeatherCache {
   data: any;
@@ -251,9 +265,10 @@ export function setLocalWeatherCache(locationId: string, data: any) {
 }
 
 // ===== API 调用 =====
-export const fetchWeatherData = async (lat: number, lon: number, forceRefresh = false) => {
+export const fetchWeatherData = async (lat: number, lon: number, forceRefresh = false, source: WeatherDataSource = 'openmeteo') => {
   const host = typeof window !== 'undefined' && process.env.NODE_ENV === 'development' ? process.env.NEXT_PUBLIC_API_URL : '';
-  const url = `${host}/weather?lat=${lat}&lon=${lon}${forceRefresh ? '&refresh=true' : ''}`;
+  const endpoint = source === 'qweather' ? '/qweather' : '/weather';
+  const url = `${host}${endpoint}?lat=${lat}&lon=${lon}${forceRefresh ? '&refresh=true' : ''}`;
   const res = await fetch(url);
   const data = await res.json();
   return data;

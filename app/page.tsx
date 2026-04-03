@@ -9,7 +9,8 @@ import {
   getSavedLocations, saveLocation, removeLocation, makeLocationId,
   getLastLocation, setLastLocation,
   getLocalWeatherCache, setLocalWeatherCache,
-  type SavedLocation,
+  getDataSource, setDataSource,
+  type SavedLocation, type WeatherDataSource,
 } from '@/lib/weather';
 
 export default function WeatherPage() {
@@ -24,12 +25,15 @@ export default function WeatherPage() {
   const [cacheAge, setCacheAge] = useState<number>(0);
   const [needsRefresh, setNeedsRefresh] = useState(false);
   const [useGPS, setUseGPS] = useState(false);
+  const [dataSource, setDataSourceState] = useState<WeatherDataSource>('openmeteo');
 
   useEffect(() => {
     loadSavedLocations();
+    const savedSource = getDataSource();
+    setDataSourceState(savedSource);
     const lastLoc = getLastLocation();
     if (lastLoc) {
-      loadWeatherForLocation(lastLoc, false);
+      loadWeatherForLocation(lastLoc, false, savedSource);
     } else {
       requestLocationPermission();
     }
@@ -76,44 +80,55 @@ export default function WeatherPage() {
       const geoData = await fetchGeoLocation();
       const { latitude, longitude, cityName } = geoData.eo.geo;
       const loc: SavedLocation = { id: makeLocationId(latitude, longitude), name: cityName || '当前位置', latitude, longitude };
-      await loadWeatherForLocation(loc, false);
+      await loadWeatherForLocation(loc, false, dataSource);
     } catch (err) {
       console.error('Load geo error:', err);
       setError('获取位置失败'); setLoading(false);
     }
   };
 
-  const loadWeatherForLocation = async (loc: SavedLocation, forceRefresh = false) => {
+  const loadWeatherForLocation = async (loc: SavedLocation, forceRefresh = false, source?: WeatherDataSource) => {
+    const activeSource = source || dataSource;
+    const cacheId = `${loc.id}_${activeSource}`;
     try {
       if (!forceRefresh) setLoading(true); else setRefreshing(true);
       setError(''); setLocation(loc); setLastLocation(loc);
-      const cache = getLocalWeatherCache(loc.id);
+      const cache = getLocalWeatherCache(cacheId);
       if (cache && !forceRefresh) {
         const ageMs = Date.now() - new Date(cache.cachedAt).getTime();
         const ageMin = Math.floor(ageMs / 60000);
         setCacheAge(ageMin); setWeatherData(cache.data); setLoading(false);
-        if (ageMin > 15) { setNeedsRefresh(true); backgroundRefresh(loc); }
+        if (ageMin > 15) { setNeedsRefresh(true); backgroundRefresh(loc, activeSource); }
         return;
       }
-      const weather = await fetchWeatherData(loc.latitude, loc.longitude, forceRefresh);
+      const weather = await fetchWeatherData(loc.latitude, loc.longitude, forceRefresh, activeSource);
       if (weather.error) throw new Error(weather.error);
-      setWeatherData(weather); setLocalWeatherCache(loc.id, weather); setCacheAge(0); setNeedsRefresh(false);
+      setWeatherData(weather); setLocalWeatherCache(cacheId, weather); setCacheAge(0); setNeedsRefresh(false);
     } catch (err) {
-      console.error('Load weather error:', err); setError('加载天气失败');
+      console.error('Load weather error:', err); setError('加载天气失败，请检查数据源配置');
     } finally {
       setLoading(false); setRefreshing(false);
     }
   };
 
-  const backgroundRefresh = async (loc: SavedLocation) => {
+  const backgroundRefresh = async (loc: SavedLocation, source?: WeatherDataSource) => {
+    const activeSource = source || dataSource;
     try {
-      const weather = await fetchWeatherData(loc.latitude, loc.longitude, true);
-      if (!weather.error) setLocalWeatherCache(loc.id, weather);
+      const weather = await fetchWeatherData(loc.latitude, loc.longitude, true, activeSource);
+      if (!weather.error) setLocalWeatherCache(`${loc.id}_${activeSource}`, weather);
     } catch (err) { console.error('Background refresh error:', err); }
   };
 
   const handleRefresh = () => { if (location) { setNeedsRefresh(false); loadWeatherForLocation(location, true); } };
   const handleSelectCity = (loc: SavedLocation) => { setShowSearch(false); loadWeatherForLocation(loc, false); };
+
+  const handleSourceChange = (source: WeatherDataSource) => {
+    setDataSourceState(source);
+    setDataSource(source);
+    if (location) {
+      loadWeatherForLocation(location, true, source);
+    }
+  };
   const handleSaveLocation = async () => {
     if (location && !savedLocs.find((l: SavedLocation) => l.id === location.id)) {
       const updated = await saveLocation(location); setSavedLocs(updated);
@@ -183,6 +198,21 @@ export default function WeatherPage() {
               )}
             </div>
             <div className="flex items-center gap-2 flex-wrap">
+              {/* 数据源切换 */}
+              <div className="flex bg-white/10 rounded-xl p-1 border border-white/10">
+                <button 
+                  onClick={() => handleSourceChange('openmeteo')}
+                  className={`px-3 py-1 rounded-lg text-xs transition-all ${dataSource === 'openmeteo' ? 'bg-white/20 text-white font-medium' : 'text-white/60 hover:text-white/80'}`}
+                >
+                  🌍 Open-Meteo
+                </button>
+                <button 
+                  onClick={() => handleSourceChange('qweather')}
+                  className={`px-3 py-1 rounded-lg text-xs transition-all ${dataSource === 'qweather' ? 'bg-white/20 text-white font-medium' : 'text-white/60 hover:text-white/80'}`}
+                >
+                  🇨🇳 和风天气
+                </button>
+              </div>
               {needsRefresh && (
                 <button onClick={handleRefresh} className="bg-emerald-500/80 hover:bg-emerald-500 text-white py-2 px-4 rounded-xl text-sm transition-all shadow-lg shadow-emerald-500/30 animate-pulse">
                   ✨ 有新数据
@@ -504,7 +534,7 @@ export default function WeatherPage() {
 
           {/* 页脚 */}
           <div className="text-center text-white/30 text-xs pt-6 pb-4 space-y-1">
-            <p>数据来源: Open-Meteo API | 空气质量: Open-Meteo AQ</p>
+            <p>数据来源: {weatherData.data_source === 'QWeather' ? '和风天气 API' : 'Open-Meteo API'} | 空气质量: {weatherData.data_source === 'QWeather' ? '和风天气 AQ' : 'Open-Meteo AQ'}</p>
             <p>Powered by EdgeOne Pages {useGPS ? '• 📍 GPS定位' : ''}</p>
             <a href="/geoInfo" className="text-white/40 hover:text-white/60 transition inline-block mt-2">📍 GeoInfo 页面 →</a>
           </div>
