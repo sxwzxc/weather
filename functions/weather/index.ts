@@ -16,6 +16,7 @@ export async function onRequest({ request, env }: { request: EORequest; env: Env
   const url = new URL(request.url);
   const lat = url.searchParams.get('lat') || request.eo?.geo?.latitude?.toString();
   const lon = url.searchParams.get('lon') || request.eo?.geo?.longitude?.toString();
+  const forceRefresh = url.searchParams.get('refresh') === 'true';
 
   if (!lat || !lon) {
     return new Response(JSON.stringify({ error: 'Missing latitude or longitude' }), {
@@ -29,16 +30,21 @@ export async function onRequest({ request, env }: { request: EORequest; env: Env
 
   const cacheKey = `weather:${lat}:${lon}`;
   
-  // 尝试从 KV 缓存读取（缓存 30 分钟）
-  if (env.weather) {
+  // 尝试从 KV 缓存读取
+  if (env.weather && !forceRefresh) {
     try {
       const cached = await env.weather.get(cacheKey);
       if (cached) {
+        const data = JSON.parse(cached);
+        const cacheAge = Date.now() - new Date(data.cached_at).getTime();
+        const cacheAgeMinutes = Math.floor(cacheAge / 60000);
+        
         return new Response(cached, {
           headers: {
             'content-type': 'application/json; charset=UTF-8',
             'Access-Control-Allow-Origin': '*',
             'X-Cache': 'HIT',
+            'X-Cache-Age': cacheAgeMinutes.toString(),
           },
         });
       }
@@ -65,14 +71,15 @@ export async function onRequest({ request, env }: { request: EORequest; env: Env
       ...weatherData,
       air_quality: airData.current,
       cached_at: new Date().toISOString(),
+      location: { latitude: parseFloat(lat), longitude: parseFloat(lon) },
     };
 
     const resultStr = JSON.stringify(result);
     
-    // 存入 KV 缓存，TTL 30 分钟
+    // 存入 KV 缓存，TTL 2 小时
     if (env.weather) {
       try {
-        await env.weather.put(cacheKey, resultStr, { expirationTtl: 1800 });
+        await env.weather.put(cacheKey, resultStr, { expirationTtl: 7200 });
       } catch (e) {
         console.error('KV write error:', e);
       }
@@ -83,6 +90,7 @@ export async function onRequest({ request, env }: { request: EORequest; env: Env
         'content-type': 'application/json; charset=UTF-8',
         'Access-Control-Allow-Origin': '*',
         'X-Cache': 'MISS',
+        'X-Cache-Age': '0',
       },
     });
   } catch (error) {
