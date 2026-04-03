@@ -26,7 +26,7 @@ export default function WeatherPage() {
   const [useGPS, setUseGPS] = useState(false);
 
   useEffect(() => {
-    setSavedLocs(getSavedLocations());
+    loadSavedLocations();
     const lastLoc = getLastLocation();
     if (lastLoc) {
       loadWeatherForLocation(lastLoc, false);
@@ -34,6 +34,11 @@ export default function WeatherPage() {
       requestLocationPermission();
     }
   }, []);
+
+  const loadSavedLocations = async () => {
+    const locs = await getSavedLocations();
+    setSavedLocs(locs);
+  };
 
   const requestLocationPermission = () => {
     if ('geolocation' in navigator) {
@@ -140,16 +145,16 @@ export default function WeatherPage() {
     loadWeatherForLocation(loc, false);
   };
 
-  const handleSaveLocation = () => {
+  const handleSaveLocation = async () => {
     if (location && !savedLocs.find(l => l.id === location.id)) {
-      saveLocation(location);
-      setSavedLocs(getSavedLocations());
+      const updated = await saveLocation(location);
+      setSavedLocs(updated);
     }
   };
 
-  const handleRemoveLocation = (id: string) => {
-    removeLocation(id);
-    setSavedLocs(getSavedLocations());
+  const handleRemoveLocation = async (id: string) => {
+    const updated = await removeLocation(id);
+    setSavedLocs(updated);
   };
 
   if (loading) {
@@ -185,11 +190,11 @@ export default function WeatherPage() {
     <>
       {showSearch && <CitySearch onSelectCity={handleSelectCity} onClose={() => setShowSearch(false)} />}
       
-      <div className={`min-h-screen bg-gradient-to-br ${wi.bg} p-3 md:p-6 pb-10 transition-all duration-500`}>
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 p-3 md:p-6 pb-10">
         <div className="max-w-6xl mx-auto space-y-4">
           
           {/* 顶部栏 */}
-          <div className="flex items-center justify-between flex-wrap gap-3 bg-white/10 backdrop-blur rounded-xl p-4">
+          <div className="flex items-center justify-between flex-wrap gap-3 bg-gray-800/90 backdrop-blur-xl rounded-xl p-4 shadow-2xl border border-gray-700/50">
             <div>
               <h1 className="text-2xl md:text-3xl font-bold text-white flex items-center gap-2">
                 {wi.icon} {location.name}
@@ -226,7 +231,7 @@ export default function WeatherPage() {
 
           {/* 收藏地点快捷栏 */}
           {showSaved && savedLocs.length > 0 && (
-            <div className="bg-white/10 backdrop-blur rounded-xl p-4">
+            <div className="bg-gray-800/90 backdrop-blur-xl rounded-xl p-4 shadow-2xl border border-gray-700/50">
               <h3 className="text-white font-medium mb-3">⭐ 收藏的地点</h3>
               <div className="flex gap-2 overflow-x-auto pb-2">
                 {savedLocs.map(loc => (
@@ -248,7 +253,7 @@ export default function WeatherPage() {
           )}
 
           {/* 当前天气大卡片 */}
-          <div className="bg-white/10 backdrop-blur rounded-xl p-6 md:p-8">
+          <div className="bg-gradient-to-br from-blue-600/30 to-purple-600/30 backdrop-blur-xl rounded-2xl p-6 md:p-8 shadow-2xl border border-blue-500/30">
             <div className="flex items-center justify-between flex-wrap gap-6">
               <div>
                 <div className="text-7xl md:text-8xl font-light text-white">{Math.round(current.temperature_2m)}°</div>
@@ -269,7 +274,7 @@ export default function WeatherPage() {
           {/* 空气质量 + 紫外线 + 日出日落 */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {air_quality && (
-              <div className="bg-white/10 backdrop-blur rounded-xl p-5">
+              <div className="bg-gray-800/90 backdrop-blur-xl rounded-xl p-5 shadow-xl border border-gray-700/50">
                 <h3 className="text-white/80 text-sm mb-3">🏭 空气质量</h3>
                 <div className={`text-3xl font-bold ${getAQILevel(air_quality.us_aqi).color}`}>
                   {air_quality.us_aqi} - {getAQILevel(air_quality.us_aqi).label}
@@ -282,7 +287,7 @@ export default function WeatherPage() {
               </div>
             )}
             {daily && (
-              <div className="bg-white/10 backdrop-blur rounded-xl p-5">
+              <div className="bg-gray-800/90 backdrop-blur-xl rounded-xl p-5 shadow-xl border border-gray-700/50">
                 <h3 className="text-white/80 text-sm mb-3">☀️ 紫外线指数</h3>
                 <div className={`text-3xl font-bold ${getUVLevel(daily.uv_index_max[0]).color}`}>
                   {daily.uv_index_max[0]} - {getUVLevel(daily.uv_index_max[0]).label}
@@ -294,7 +299,7 @@ export default function WeatherPage() {
               </div>
             )}
             {daily && (
-              <div className="bg-white/10 backdrop-blur rounded-xl p-5">
+              <div className="bg-gray-800/90 backdrop-blur-xl rounded-xl p-5 shadow-xl border border-gray-700/50">
                 <h3 className="text-white/80 text-sm mb-3">🌅 日出日落</h3>
                 <div className="flex justify-between items-center mt-3">
                   <div className="text-center">
@@ -315,7 +320,7 @@ export default function WeatherPage() {
 
           {/* 48小时预报 */}
           {hourly && (
-            <div className="bg-white/10 backdrop-blur rounded-xl p-5">
+            <div className="bg-gray-800/90 backdrop-blur-xl rounded-xl p-5 shadow-xl border border-gray-700/50">
               <h3 className="text-white font-medium mb-4">⏰ 48小时预报</h3>
               <div className="flex gap-3 overflow-x-auto pb-2">
                 {Array.from({ length: 48 }).map((_, i) => {
@@ -339,7 +344,7 @@ export default function WeatherPage() {
 
           {/* 15天预报 */}
           {daily && (
-            <div className="bg-white/10 backdrop-blur rounded-xl p-5">
+            <div className="bg-gray-800/90 backdrop-blur-xl rounded-xl p-5 shadow-xl border border-gray-700/50">
               <h3 className="text-white font-medium mb-4">📅 15天天气预报</h3>
               <div className="space-y-2">
                 {daily.time.map((date: string, i: number) => {
@@ -387,7 +392,7 @@ export default function WeatherPage() {
 
 function InfoCard({ label, value, icon, extra }: { label: string; value: string; icon: string; extra?: string }) {
   return (
-    <div className="bg-white/10 rounded-lg p-4 text-center">
+    <div className="bg-gray-700/50 rounded-lg p-4 text-center border border-gray-600/30">
       <div className="text-2xl mb-2">{icon}</div>
       <div className="text-white font-medium text-lg">{value}</div>
       <div className="text-white/70 text-xs mt-1">{label}</div>

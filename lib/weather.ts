@@ -139,27 +139,49 @@ export interface SavedLocation {
   admin1?: string;
 }
 
-const SAVED_LOCATIONS_KEY = 'weather_saved_locations';
 const LAST_LOCATION_KEY = 'weather_last_location';
 const WEATHER_CACHE_KEY = 'weather_cache_data';
 
-export function getSavedLocations(): SavedLocation[] {
-  if (typeof window === 'undefined') return [];
-  const data = localStorage.getItem(SAVED_LOCATIONS_KEY);
-  return data ? JSON.parse(data) : [];
-}
-
-export function saveLocation(loc: SavedLocation) {
-  const list = getSavedLocations();
-  if (!list.find(l => l.id === loc.id)) {
-    list.push(loc);
-    localStorage.setItem(SAVED_LOCATIONS_KEY, JSON.stringify(list));
+export async function getSavedLocations(): Promise<SavedLocation[]> {
+  try {
+    const host = typeof window !== 'undefined' && process.env.NODE_ENV === 'development' ? process.env.NEXT_PUBLIC_API_URL : '';
+    const res = await fetch(`${host}/favorites`);
+    const data = await res.json();
+    return data.favorites || [];
+  } catch (err) {
+    console.error('Get favorites error:', err);
+    return [];
   }
 }
 
-export function removeLocation(id: string) {
-  const list = getSavedLocations().filter(l => l.id !== id);
-  localStorage.setItem(SAVED_LOCATIONS_KEY, JSON.stringify(list));
+export async function saveLocation(loc: SavedLocation): Promise<SavedLocation[]> {
+  try {
+    const host = typeof window !== 'undefined' && process.env.NODE_ENV === 'development' ? process.env.NEXT_PUBLIC_API_URL : '';
+    const res = await fetch(`${host}/favorites`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(loc),
+    });
+    const data = await res.json();
+    return data.favorites || [];
+  } catch (err) {
+    console.error('Save favorite error:', err);
+    return [];
+  }
+}
+
+export async function removeLocation(id: string): Promise<SavedLocation[]> {
+  try {
+    const host = typeof window !== 'undefined' && process.env.NODE_ENV === 'development' ? process.env.NEXT_PUBLIC_API_URL : '';
+    const res = await fetch(`${host}/favorites?id=${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    });
+    const data = await res.json();
+    return data.favorites || [];
+  } catch (err) {
+    console.error('Remove favorite error:', err);
+    return [];
+  }
 }
 
 export function makeLocationId(lat: number, lon: number): string {
