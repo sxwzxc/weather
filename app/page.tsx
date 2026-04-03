@@ -27,6 +27,8 @@ export default function WeatherPage() {
   const [useGPS, setUseGPS] = useState(false);
   const [dataSource, setDataSourceState] = useState<WeatherDataSource>('openmeteo');
   const [sourceNotice, setSourceNotice] = useState('');
+  const [sourceErrors, setSourceErrors] = useState<any[]>([]);
+  const [showDebug, setShowDebug] = useState(false);
 
   const sourceLabel = (source: string) => {
     if (source === 'qweather') return '和风天气';
@@ -110,6 +112,20 @@ export default function WeatherPage() {
         return;
       }
       const weather = await fetchWeatherData(loc.latitude, loc.longitude, forceRefresh, activeSource);
+      console.log('[Frontend] weather response:', JSON.stringify({ 
+        error: weather.error, 
+        data_source: weather.data_source, 
+        resolved_source: weather.resolved_source,
+        fallback_used: weather.fallback_used,
+        source_errors: weather.source_errors,
+      }));
+      
+      if (weather.source_errors) {
+        setSourceErrors(weather.source_errors);
+      } else {
+        setSourceErrors([]);
+      }
+      
       if (weather.error) throw new Error(weather.error);
       const resolvedSource = ['openmeteo', 'qweather', 'owm'].includes(weather.resolved_source)
         ? weather.resolved_source as WeatherDataSource

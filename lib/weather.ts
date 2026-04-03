@@ -279,8 +279,22 @@ export const fetchWeatherData = async (lat: number, lon: number, forceRefresh = 
   }
 
   const url = `${host}/weather?${params.toString()}`;
+  console.log(`[fetchWeatherData] URL: ${url}`);
+  console.log(`[fetchWeatherData] params: lat=${lat} lon=${lon} source=${source} fallback=true forceRefresh=${forceRefresh}`);
+  
   const res = await fetch(url);
+  console.log(`[fetchWeatherData] HTTP ${res.status}`);
+  console.log(`[fetchWeatherData] headers:`, {
+    'X-Data-Source': res.headers.get('X-Data-Source'),
+    'X-Resolved-Source': res.headers.get('X-Resolved-Source'),
+    'X-Fallback-Used': res.headers.get('X-Fallback-Used'),
+    'X-Cache': res.headers.get('X-Cache'),
+  });
+  
   const data = await res.json().catch(() => ({ error: `天气请求失败（HTTP ${res.status}）` }));
+  console.log(`[fetchWeatherData] response keys:`, Object.keys(data || {}));
+  if (data.error) console.error(`[fetchWeatherData] error:`, data.error);
+  if (data.source_errors) console.error(`[fetchWeatherData] source_errors:`, JSON.stringify(data.source_errors));
 
   if (!res.ok && !data?.error) {
     return { error: `天气请求失败（HTTP ${res.status}）`, details: data };
