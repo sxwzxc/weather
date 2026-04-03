@@ -144,7 +144,14 @@ export async function onRequest({ request, env }: { request: Request; env: any }
   const lon = url.searchParams.get('lon');
   const forceRefresh = url.searchParams.get('refresh') === 'true';
 
+  console.log(`[QWeather] request lat=${lat} lon=${lon} forceRefresh=${forceRefresh}`);
+  console.log(`[QWeather] env keys available: ${Object.keys(env || {}).join(', ')}`);
+  console.log(`[QWeather] HFHOST=${env?.HFHOST || '(未设置)'}`);
+  console.log(`[QWeather] HFKEY=${env?.HFKEY ? env.HFKEY.slice(0, 6) + '...' : '(未设置)'}`);
+  console.log(`[QWeather] HFJWT=${env?.HFJWT ? '已设置' : '(未设置)'}`);
+
   if (!lat || !lon) {
+    console.error('[QWeather] missing lat/lon');
     return new Response(JSON.stringify({ error: 'Missing latitude or longitude' }), {
       status: 400,
       headers: responseHeaders(),
@@ -152,7 +159,9 @@ export async function onRequest({ request, env }: { request: Request; env: any }
   }
 
   const baseUrl = normalizeHost(env.HFHOST);
+  console.log(`[QWeather] baseUrl=${baseUrl || '(空)'}`);
   if (!baseUrl) {
+    console.error('[QWeather] HFHOST not configured');
     return new Response(
       JSON.stringify({
         error: 'QWeather API host not configured',
@@ -166,7 +175,9 @@ export async function onRequest({ request, env }: { request: Request; env: any }
   }
 
   const authHeaders = buildAuthHeaders(env);
+  console.log(`[QWeather] authHeaders=${authHeaders ? JSON.stringify(Object.keys(authHeaders)) : '(null)'}`);
   if (!authHeaders) {
+    console.error('[QWeather] no auth credentials');
     return new Response(
       JSON.stringify({
         error: 'QWeather credentials not configured',
@@ -188,6 +199,7 @@ export async function onRequest({ request, env }: { request: Request; env: any }
         const data = JSON.parse(cached);
         const cacheAge = Date.now() - new Date(data.cached_at).getTime();
         const cacheAgeMinutes = Math.floor(cacheAge / 60000);
+        console.log(`[QWeather] cache HIT age=${cacheAgeMinutes}min`);
 
         if (cacheAgeMinutes < QWEATHER_CACHE_MINUTES) {
           return new Response(cached, {
@@ -198,9 +210,12 @@ export async function onRequest({ request, env }: { request: Request; env: any }
             }),
           });
         }
+        console.log(`[QWeather] cache expired, refreshing`);
+      } else {
+        console.log(`[QWeather] cache MISS`);
       }
     } catch (e) {
-      console.error('QWeather KV read error:', e);
+      console.error('[QWeather] KV read error:', e);
     }
   }
 
@@ -217,18 +232,41 @@ export async function onRequest({ request, env }: { request: Request; env: any }
       unit: 'm',
     });
 
+    const nowUrl = `${baseUrl}/v7/weather/now?${weatherQuery.toString()}`;
+    const dailyUrl = `${baseUrl}/v7/weather/15d?${weatherQuery.toString()}`;
+    const hourlyUrl = `${baseUrl}/v7/weather/168h?${weatherQuery.toString()}`;
+    const airUrl = `${baseUrl}/airquality/v1/current/${lat}/${lon}?lang=zh`;
+
+    console.log(`[QWeather] now URL: ${nowUrl}`);
+    console.log(`[QWeather] daily URL: ${dailyUrl}`);
+    console.log(`[QWeather] hourly URL: ${hourlyUrl}`);
+    console.log(`[QWeather] air URL: ${airUrl}`);
+
     const [nowRes, dailyRes, hourlyRes, airRes] = await Promise.all([
-      fetch(`${baseUrl}/v7/weather/now?${weatherQuery.toString()}`, { headers: fetchHeaders }),
-      fetch(`${baseUrl}/v7/weather/15d?${weatherQuery.toString()}`, { headers: fetchHeaders }),
-      fetch(`${baseUrl}/v7/weather/168h?${weatherQuery.toString()}`, { headers: fetchHeaders }),
-      fetch(`${baseUrl}/airquality/v1/current/${lat}/${lon}?lang=zh`, { headers: fetchHeaders }),
+      fetch(nowUrl, { headers: fetchHeaders }),
+      fetch(dailyUrl, { headers: fetchHeaders }),
+      fetch(hourlyUrl, { headers: fetchHeaders }),
+      fetch(airUrl, { headers: fetchHeaders }),
     ]);
+
+    console.log(`[QWeather] HTTP status: now=${nowRes.status} daily=${dailyRes.status} hourly=${hourlyRes.status} air=${airRes.status}`);
 
     const [nowData, dailyData, hourlyData] = await Promise.all([
       parseJsonSafe(nowRes),
       parseJsonSafe(dailyRes),
       parseJsonSafe(hourlyRes),
     ]);
+
+    console.log(`[QWeather] nowData.code=${nowData?.code} dailyData.code=${dailyData?.code} hourlyData.code=${hourlyData?.code}`);
+    if (nowData && nowData.code !== '200') {
+      console.error(`[QWeather] nowData error: ${JSON.stringify(nowData).slice(0, 300)}`);
+    }
+    if (dailyData && dailyData.code !== '200') {
+      console.error(`[QWeather] dailyData error: ${JSON.stringify(dailyData).slice(0, 300)}`);
+    }
+    if (hourlyData && hourlyData.code !== '200') {
+      console.error(`[QWeather] hourlyData error: ${JSON.stringify(hourlyData).slice(0, 300)}`);
+    }
 
     const weatherErrors: string[] = [];
     if (!nowRes.ok) weatherErrors.push(`实时天气 HTTP ${nowRes.status}`);
@@ -243,23 +281,28 @@ export async function onRequest({ request, env }: { request: Request; env: any }
     if (hourlyPayloadError) weatherErrors.push(`逐小时预报错误: ${hourlyPayloadError}`);
 
     if (weatherErrors.length > 0) {
+      console.error(`[QWeather] weather API errors: ${weatherErrors.join(' | ')}`);
       throw new Error(weatherErrors.join(' | '));
     }
 
     let airData: any = null;
     if (airRes.ok) {
       airData = await parseJsonSafe(airRes);
+      console.log(`[QWeather] air data parsed OK`);
     } else {
-      console.warn(`QWeather air API failed: HTTP ${airRes.status}`);
+      const airBody = await airRes.text().catch(() => '');
+      console.warn(`[QWeather] air API failed: HTTP ${airRes.status}, body: ${airBody.slice(0, 200)}`);
     }
 
     const result = convertQWeatherToStandard(nowData, dailyData, hourlyData, airData, lat, lon);
+    console.log(`[QWeather] converted OK, temp=${result.current?.temperature_2m}`);
     const resultStr = JSON.stringify(result);
 
     try {
       await weather.put(cacheKey, resultStr, { expirationTtl: QWEATHER_CACHE_MINUTES * 60 });
+      console.log(`[QWeather] cached OK`);
     } catch (e) {
-      console.error('QWeather KV write error:', e);
+      console.error('[QWeather] KV write error:', e);
     }
 
     return new Response(resultStr, {

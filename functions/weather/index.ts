@@ -57,21 +57,21 @@ async function parseJsonSafe(response: Response) {
 
 async function fetchOpenMeteoData(lat: string, lon: string, forceRefresh: boolean) {
   const cacheKey = `weather_openmeteo_${lat}_${lon}`;
+  console.log(`[OpenMeteo] start lat=${lat} lon=${lon} forceRefresh=${forceRefresh}`);
 
   if (!forceRefresh) {
     try {
       const cached = await weather.get(cacheKey);
       if (cached) {
         const payload = JSON.parse(cached);
-        return {
-          ok: true,
-          payload,
-          fromCache: true,
-          cacheAgeMinutes: Math.floor((Date.now() - new Date(payload.cached_at).getTime()) / 60000),
-        };
+        const ageMin = Math.floor((Date.now() - new Date(payload.cached_at).getTime()) / 60000);
+        console.log(`[OpenMeteo] cache HIT age=${ageMin}min`);
+        return { ok: true, payload, fromCache: true, cacheAgeMinutes: ageMin };
+      } else {
+        console.log(`[OpenMeteo] cache MISS`);
       }
     } catch (e) {
-      console.error('Open-Meteo KV read error:', e);
+      console.error('[OpenMeteo] KV read error:', e);
     }
   }
 
@@ -79,9 +79,13 @@ async function fetchOpenMeteoData(lat: string, lon: string, forceRefresh: boolea
     const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,weather_code,cloud_cover,pressure_msl,surface_pressure,wind_speed_10m,wind_direction_10m&hourly=temperature_2m,relative_humidity_2m,precipitation_probability,precipitation,weather_code,visibility,wind_speed_10m,uv_index&daily=weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset,uv_index_max,precipitation_sum,precipitation_probability_max,wind_speed_10m_max&timezone=auto&forecast_days=16`;
     const airQualityUrl = `https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${lat}&longitude=${lon}&current=pm10,pm2_5,us_aqi&timezone=auto`;
 
+    console.log(`[OpenMeteo] fetching weather: ${weatherUrl.slice(0, 80)}...`);
     const [weatherRes, airRes] = await Promise.all([fetch(weatherUrl), fetch(airQualityUrl)]);
+    console.log(`[OpenMeteo] weather HTTP ${weatherRes.status}, air HTTP ${airRes.status}`);
 
     if (!weatherRes.ok) {
+      const errBody = await weatherRes.text().catch(() => '');
+      console.error(`[OpenMeteo] weather API error ${weatherRes.status}: ${errBody.slice(0, 200)}`);
       return { ok: false, error: `Open-Meteo weather HTTP ${weatherRes.status}` };
     }
 
@@ -89,6 +93,7 @@ async function fetchOpenMeteoData(lat: string, lon: string, forceRefresh: boolea
     const airData = airRes.ok ? await parseJsonSafe(airRes) : null;
 
     if (!weatherData || weatherData.error) {
+      console.error('[OpenMeteo] invalid payload:', JSON.stringify(weatherData).slice(0, 200));
       return { ok: false, error: weatherData?.error || 'Open-Meteo weather payload invalid' };
     }
 
@@ -103,16 +108,16 @@ async function fetchOpenMeteoData(lat: string, lon: string, forceRefresh: boolea
 
     try {
       await weather.put(cacheKey, JSON.stringify(payload), { expirationTtl: 60 * 60 });
+      console.log(`[OpenMeteo] cached OK`);
     } catch (e) {
-      console.error('Open-Meteo KV write error:', e);
+      console.error('[OpenMeteo] KV write error:', e);
     }
 
+    console.log(`[OpenMeteo] success temp=${payload.current?.temperature_2m}`);
     return { ok: true, payload, fromCache: false, cacheAgeMinutes: 0 };
   } catch (error) {
-    return {
-      ok: false,
-      error: error instanceof Error ? error.message : String(error),
-    };
+    console.error('[OpenMeteo] fetch exception:', error);
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
   }
 }
 
@@ -123,30 +128,30 @@ async function fetchProviderEndpoint(request: Request, provider: Exclude<Weather
   if (forceRefresh) params.set('refresh', 'true');
 
   const targetUrl = `${requestUrl.origin}${endpoint}?${params.toString()}`;
+  console.log(`[Gateway] calling provider=${provider} url=${targetUrl}`);
 
   try {
     const response = await fetch(targetUrl, {
-      headers: {
-        'X-Weather-Gateway': '1',
-      },
+      headers: { 'X-Weather-Gateway': '1' },
     });
 
+    console.log(`[Gateway] provider=${provider} HTTP ${response.status}`);
     const payload = await parseJsonSafe(response);
 
     if (!response.ok) {
-      return {
-        ok: false,
-        error: payload?.error || `Provider ${provider} HTTP ${response.status}`,
-      };
+      const errMsg = payload?.error || payload?.details || `Provider ${provider} HTTP ${response.status}`;
+      console.error(`[Gateway] provider=${provider} error: ${errMsg}`);
+      if (payload) console.error(`[Gateway] provider=${provider} payload: ${JSON.stringify(payload).slice(0, 300)}`);
+      return { ok: false, error: errMsg };
     }
 
     if (!payload || payload.error) {
-      return {
-        ok: false,
-        error: payload?.error || `Provider ${provider} payload invalid`,
-      };
+      const errMsg = payload?.error || `Provider ${provider} payload invalid`;
+      console.error(`[Gateway] provider=${provider} invalid payload: ${JSON.stringify(payload).slice(0, 300)}`);
+      return { ok: false, error: errMsg };
     }
 
+    console.log(`[Gateway] provider=${provider} success data_source=${payload.data_source}`);
     return {
       ok: true,
       payload,
@@ -154,10 +159,8 @@ async function fetchProviderEndpoint(request: Request, provider: Exclude<Weather
       cacheAgeMinutes: Number.parseInt(response.headers.get('X-Cache-Age') || '0', 10) || 0,
     };
   } catch (error) {
-    return {
-      ok: false,
-      error: error instanceof Error ? error.message : String(error),
-    };
+    console.error(`[Gateway] provider=${provider} exception:`, error);
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
   }
 }
 
@@ -166,12 +169,14 @@ export async function onRequest({ request }: { request: EORequest }) {
   const lat = url.searchParams.get('lat') || request.eo?.geo?.latitude?.toString();
   const lon = url.searchParams.get('lon') || request.eo?.geo?.longitude?.toString();
   const forceRefresh = url.searchParams.get('refresh') === 'true';
-
   const requestedProvider = parseProvider(url.searchParams.get('source') || url.searchParams.get('provider'));
   const fallbackEnabled = url.searchParams.get('fallback') !== 'false';
   const providerQueue = buildProviderQueue(requestedProvider, fallbackEnabled);
 
+  console.log(`[Weather] request lat=${lat} lon=${lon} source=${requestedProvider || 'auto'} fallback=${fallbackEnabled} queue=${providerQueue.join(',')}`);
+
   if (!lat || !lon) {
+    console.error('[Weather] missing lat/lon');
     return new Response(JSON.stringify({ error: 'Missing latitude or longitude' }), {
       status: 400,
       headers: responseHeaders(),
@@ -181,6 +186,7 @@ export async function onRequest({ request }: { request: EORequest }) {
   const sourceErrors: Array<{ provider: string; message: string }> = [];
 
   for (const provider of providerQueue) {
+    console.log(`[Weather] trying provider=${provider}`);
     const result =
       provider === 'openmeteo'
         ? await fetchOpenMeteoData(lat, lon, forceRefresh)
@@ -200,6 +206,7 @@ export async function onRequest({ request }: { request: EORequest }) {
         payload.data_source = providerLabel(resolvedProvider);
       }
 
+      console.log(`[Weather] success provider=${resolvedProvider} fallback_used=${payload.fallback_used}`);
       return new Response(JSON.stringify(payload), {
         headers: responseHeaders({
           'X-Data-Source': payload.data_source,
@@ -212,9 +219,11 @@ export async function onRequest({ request }: { request: EORequest }) {
       });
     }
 
+    console.error(`[Weather] provider=${provider} failed: ${result.error}`);
     sourceErrors.push({ provider, message: result.error || 'Unknown provider error' });
   }
 
+  console.error(`[Weather] ALL providers failed:`, JSON.stringify(sourceErrors));
   return new Response(
     JSON.stringify({
       error: 'Failed to fetch weather data from all providers',
