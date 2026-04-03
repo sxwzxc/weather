@@ -8,11 +8,7 @@ interface EORequest extends Request {
   };
 }
 
-interface Env {
-  weather?: any;
-}
-
-export async function onRequest({ request, env }: { request: EORequest; env: Env }) {
+export async function onRequest({ request, params, env }: any) {
   const url = new URL(request.url);
   const lat = url.searchParams.get('lat') || request.eo?.geo?.latitude?.toString();
   const lon = url.searchParams.get('lon') || request.eo?.geo?.longitude?.toString();
@@ -28,12 +24,12 @@ export async function onRequest({ request, env }: { request: EORequest; env: Env
     });
   }
 
-  const cacheKey = `weather:${lat}:${lon}`;
+  const cacheKey = `weather_${lat}_${lon}`;
   
   // 尝试从 KV 缓存读取
-  if (env.weather && !forceRefresh) {
+  if (!forceRefresh) {
     try {
-      const cached = await env.weather.get(cacheKey);
+      const cached = await weather.get(cacheKey);
       if (cached) {
         const data = JSON.parse(cached);
         const cacheAge = Date.now() - new Date(data.cached_at).getTime();
@@ -76,13 +72,11 @@ export async function onRequest({ request, env }: { request: EORequest; env: Env
 
     const resultStr = JSON.stringify(result);
     
-    // 存入 KV 缓存，TTL 2 小时
-    if (env.weather) {
-      try {
-        await env.weather.put(cacheKey, resultStr, { expirationTtl: 7200 });
-      } catch (e) {
-        console.error('KV write error:', e);
-      }
+    // 存入 KV 缓存
+    try {
+      await weather.put(cacheKey, resultStr);
+    } catch (e) {
+      console.error('KV write error:', e);
     }
 
     return new Response(resultStr, {
