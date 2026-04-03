@@ -10,7 +10,7 @@ export async function onRequest({ request }: { request: Request }) {
   }
 
   try {
-    const geocodingUrl = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(query)}&count=10&language=zh&format=json`;
+    const geocodingUrl = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(query)}&count=20&language=zh&format=json`;
     
     const response = await fetch(geocodingUrl);
     const data = await response.json();

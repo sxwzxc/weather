@@ -1,5 +1,5 @@
 'use client';
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { searchCity, type SavedLocation, makeLocationId } from '@/lib/weather';
 
 interface CitySearchProps {
@@ -12,33 +12,44 @@ export default function CitySearch({ onSelectCity, onClose }: CitySearchProps) {
   const [results, setResults] = useState<any[]>([]);
   const [searching, setSearching] = useState(false);
   const [error, setError] = useState('');
+  const debounceRef = useRef<any>(null);
 
-  const handleSearch = async () => {
-    if (!query.trim()) return;
+  // 实时搜索：输入后 300ms 自动搜索
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (!query.trim()) {
+      setResults([]);
+      setError('');
+      return;
+    }
+    debounceRef.current = setTimeout(() => {
+      doSearch(query.trim());
+    }, 300);
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, [query]);
+
+  const doSearch = async (q: string) => {
     setSearching(true);
     setError('');
     try {
-      const data = await searchCity(query);
+      const data = await searchCity(q);
       if (data.results && data.results.length > 0) {
-        // 排序：优先显示地级市（feature_code 为 PPLA2）和省会（PPLA）
         const sorted = data.results.sort((a: any, b: any) => {
-          // 优先级：PPLA（省会） > PPLA2（地级市） > 其他
           const getPriority = (item: any) => {
-            if (item.feature_code === 'PPLA') return 3; // 省会
-            if (item.feature_code === 'PPLA2') return 2; // 地级市
-            if (item.feature_code === 'PPL') return 1; // 普通城市
-            return 0; // 其他
+            if (item.feature_code === 'PPLA') return 3;
+            if (item.feature_code === 'PPLA2') return 2;
+            if (item.feature_code === 'PPL') return 1;
+            return 0;
           };
-          
           const priorityDiff = getPriority(b) - getPriority(a);
           if (priorityDiff !== 0) return priorityDiff;
-          
-          // 相同优先级按人口排序
           return (b.population || 0) - (a.population || 0);
         });
         setResults(sorted);
       } else {
-        setError('未找到相关城市');
+        setError('未找到相关城市，试试其他关键词');
         setResults([]);
       }
     } catch (err) {
@@ -69,24 +80,24 @@ export default function CitySearch({ onSelectCity, onClose }: CitySearchProps) {
             <h2 className="text-2xl font-bold text-white">🔍 搜索城市</h2>
             <button onClick={onClose} className="text-gray-400 hover:text-white text-2xl">&times;</button>
           </div>
-          <div className="flex gap-2">
+          <div className="relative">
             <input
               value={query}
               onChange={e => setQuery(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && handleSearch()}
-              placeholder="输入城市名称（支持中英文）..."
-              className="flex-1 bg-gray-700 text-white placeholder-gray-400 border border-gray-600 rounded-lg px-4 py-3 outline-none focus:border-blue-500 transition"
+              placeholder="输入城市名称，自动搜索..."
+              className="w-full bg-gray-700 text-white placeholder-gray-400 border border-gray-600 rounded-lg px-4 py-3 pr-12 outline-none focus:border-blue-500 transition"
               autoFocus
             />
-            <button
-              onClick={handleSearch}
-              disabled={searching || !query.trim()}
-              className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 text-white px-6 py-3 rounded-lg font-medium transition"
-            >
-              {searching ? '搜索中...' : '搜索'}
-            </button>
+            {searching && (
+              <div className="absolute right-4 top-1/2 -translate-y-1/2">
+                <div className="w-5 h-5 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
+              </div>
+            )}
           </div>
           {error && <p className="text-red-400 text-sm mt-2">{error}</p>}
+          {query.trim() && !searching && results.length > 0 && (
+            <p className="text-gray-500 text-xs mt-2">找到 {results.length} 个结果</p>
+          )}
         </div>
 
         <div className="overflow-y-auto max-h-[calc(80vh-180px)] p-4">
