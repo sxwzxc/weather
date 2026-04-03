@@ -5,8 +5,8 @@ import "./globals.css";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "EdgeOne Pages Functions: Geolocation",
-  description: "An example of using EdgeOne Pages Functions with Geolocation.",
+  title: "天气预报 - Weather Forecast",
+  description: "基于 Open-Meteo 的天气预报应用，支持15天预报、小时预报、降水预报等功能",
 };
 
 export default function RootLayout({
