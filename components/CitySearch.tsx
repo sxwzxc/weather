@@ -1,6 +1,6 @@
 'use client';
-import React, { useState, useEffect, useRef } from 'react';
-import { searchCity, type SavedLocation, makeLocationId } from '@/lib/weather';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { searchCity, type SavedLocation, type CitySearchResult, makeLocationId } from '@/lib/weather';
 
 interface CitySearchProps {
   onSelectCity: (loc: SavedLocation) => void;
@@ -9,55 +9,112 @@ interface CitySearchProps {
 
 export default function CitySearch({ onSelectCity, onClose }: CitySearchProps) {
   const [query, setQuery] = useState('');
-  const [results, setResults] = useState<any[]>([]);
+  const [results, setResults] = useState<CitySearchResult[]>([]);
   const [searching, setSearching] = useState(false);
   const [error, setError] = useState('');
-  const debounceRef = useRef<any>(null);
+  const [preferredCountryCode, setPreferredCountryCode] = useState('CN');
 
-  // 实时搜索：输入后 1 秒自动搜索
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const requestIdRef = useRef(0);
+  const abortRef = useRef<AbortController | null>(null);
+
+  const getMinLength = (value: string) => (/[\u3400-\u9FFF]/.test(value) ? 1 : 2);
+
   useEffect(() => {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    if (!query.trim()) {
-      setResults([]);
-      setError('');
-      return;
-    }
-    debounceRef.current = setTimeout(() => {
-      doSearch(query.trim());
-    }, 1000);
-    return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-    };
-  }, [query]);
+    if (typeof navigator === 'undefined') return;
+    const locale = navigator.language || '';
+    const region = locale.split('-')[1]?.toUpperCase();
 
-  const handleKeyDown = (e: any) => {
-    if (e.key === 'Enter' && query.trim()) {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-      doSearch(query.trim());
-    }
-  };
+    if (region) setPreferredCountryCode(region);
+    else if (locale.toLowerCase().startsWith('zh')) setPreferredCountryCode('CN');
+    else setPreferredCountryCode('');
+  }, []);
 
-  const doSearch = async (q: string) => {
+  const doSearch = useCallback(async (q: string) => {
+    const currentRequestId = ++requestIdRef.current;
+
+    if (abortRef.current) {
+      abortRef.current.abort();
+    }
+
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     setSearching(true);
     setError('');
+
     try {
-      const data = await searchCity(q);
-      if (data.results && data.results.length > 0) {
-        // API 已经按相关性排序，直接使用
-        setResults(data.results);
+      const data = await searchCity(q, {
+        countryCode: preferredCountryCode || undefined,
+        limit: 20,
+        signal: controller.signal,
+      });
+
+      if (currentRequestId !== requestIdRef.current) return;
+
+      const nextResults = data.results || [];
+      if (nextResults.length > 0) {
+        setResults(nextResults);
       } else {
         setError('未找到相关城市，试试其他关键词');
         setResults([]);
       }
     } catch (err) {
-      setError('搜索失败，请重试');
+      if (err instanceof DOMException && err.name === 'AbortError') return;
+      if (currentRequestId !== requestIdRef.current) return;
+
+      setError('搜索失败，请稍后重试');
       setResults([]);
     } finally {
-      setSearching(false);
+      if (currentRequestId === requestIdRef.current) {
+        setSearching(false);
+      }
+    }
+  }, [preferredCountryCode]);
+
+  // 实时搜索：输入后 350ms 自动搜索
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+
+    const trimmed = query.trim();
+    if (!trimmed) {
+      setResults([]);
+      setError('');
+      return;
+    }
+
+    if (trimmed.length < getMinLength(trimmed)) {
+      setResults([]);
+      setError('');
+      return;
+    }
+
+    debounceRef.current = setTimeout(() => {
+      doSearch(trimmed);
+    }, 350);
+
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, [query, doSearch]);
+
+  useEffect(() => {
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      if (abortRef.current) abortRef.current.abort();
+    };
+  }, []);
+
+  const handleKeyDown = (e: any) => {
+    const trimmed = query.trim();
+    if (e.key === 'Enter' && trimmed) {
+      if (trimmed.length < getMinLength(trimmed)) return;
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      doSearch(trimmed);
     }
   };
 
-  const handleSelect = (r: any) => {
+  const handleSelect = (r: CitySearchResult) => {
     const loc: SavedLocation = {
       id: makeLocationId(r.latitude, r.longitude),
       name: r.name,
@@ -82,7 +139,7 @@ export default function CitySearch({ onSelectCity, onClose }: CitySearchProps) {
               value={query}
               onChange={e => setQuery(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="输入城市名称，按回车搜索..."
+              placeholder="输入城市名称/拼音（支持模糊搜索）"
               className="w-full bg-gray-700 text-white placeholder-gray-400 border border-gray-600 rounded-lg px-4 py-3 pr-12 outline-none focus:border-blue-500 transition"
               autoFocus
             />
@@ -96,6 +153,9 @@ export default function CitySearch({ onSelectCity, onClose }: CitySearchProps) {
           {query.trim() && !searching && results.length > 0 && (
             <p className="text-gray-500 text-xs mt-2">找到 {results.length} 个结果</p>
           )}
+          <p className="text-gray-500 text-xs mt-2">
+            已启用模糊搜索{preferredCountryCode ? `（优先国家: ${preferredCountryCode}）` : ''}
+          </p>
         </div>
 
         <div className="overflow-y-auto max-h-[calc(80vh-180px)] p-4">
@@ -108,14 +168,22 @@ export default function CitySearch({ onSelectCity, onClose }: CitySearchProps) {
           )}
 
           {results.map((r, i) => {
-            const cityLabel = 
-              r.feature_code === 'PPLA' ? '省会' : 
-              r.feature_code === 'PPLA2' ? '地级市' : 
-              r.feature_code === 'PPLA3' ? '区县' : '';
+            const cityLabel =
+              r.feature_code === 'PPLC' ? '首都' :
+              r.feature_code === 'PPLA' ? '省会' :
+              r.feature_code === 'PPLA2' ? '地级市' :
+              r.feature_code === 'PPLA3' ? '区县级' :
+              r.feature_code === 'PPLA4' ? '乡镇级' :
+              r.feature_code?.startsWith('PPL') ? '居民地' : '';
+
+            const locationDesc = [r.admin2, r.admin1, r.country]
+              .filter(Boolean)
+              .filter((value, idx, arr) => arr.indexOf(value) === idx)
+              .join(' · ');
             
             return (
               <button
-                key={i}
+                key={r.id ? `id_${r.id}` : `${r.latitude}_${r.longitude}_${r.name}_${i}`}
                 onClick={() => handleSelect(r)}
                 className="w-full text-left bg-gray-700/50 hover:bg-gray-700 p-4 rounded-lg mb-2 transition group"
               >
@@ -132,9 +200,7 @@ export default function CitySearch({ onSelectCity, onClose }: CitySearchProps) {
                       )}
                     </div>
                     <div className="text-gray-400 text-sm mt-1">
-                      {r.admin1 && <span>{r.admin1}</span>}
-                      {r.admin1 && r.country && <span> · </span>}
-                      {r.country && <span>{r.country}</span>}
+                      {locationDesc || '未知地区'}
                     </div>
                     <div className="text-gray-500 text-xs mt-1">
                       📍 {r.latitude.toFixed(2)}°, {r.longitude.toFixed(2)}°

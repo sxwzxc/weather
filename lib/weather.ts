@@ -139,6 +139,31 @@ export interface SavedLocation {
   admin1?: string;
 }
 
+export interface CitySearchResult {
+  id?: number;
+  name: string;
+  latitude: number;
+  longitude: number;
+  country?: string;
+  country_code?: string;
+  admin1?: string;
+  admin2?: string;
+  feature_code?: string;
+  population?: number;
+}
+
+export interface CitySearchResponse {
+  results?: CitySearchResult[];
+  generationtime_ms?: number;
+  error?: string;
+}
+
+export interface CitySearchOptions {
+  countryCode?: string;
+  limit?: number;
+  signal?: AbortSignal;
+}
+
 const LAST_LOCATION_KEY = 'weather_last_location';
 const WEATHER_CACHE_KEY = 'weather_cache_data';
 
@@ -240,8 +265,25 @@ export const fetchGeoLocation = async () => {
   return res.json();
 };
 
-export const searchCity = async (query: string) => {
+export const searchCity = async (query: string, options: CitySearchOptions = {}): Promise<CitySearchResponse> => {
   const host = typeof window !== 'undefined' && process.env.NODE_ENV === 'development' ? process.env.NEXT_PUBLIC_API_URL : '';
-  const res = await fetch(`${host}/geocoding?q=${encodeURIComponent(query)}`);
+  const params = new URLSearchParams({ q: query });
+
+  if (options.countryCode) {
+    params.set('countryCode', options.countryCode.toUpperCase());
+  }
+
+  if (typeof options.limit === 'number') {
+    params.set('limit', String(options.limit));
+  }
+
+  const res = await fetch(`${host}/geocoding?${params.toString()}`, {
+    signal: options.signal,
+  });
+
+  if (!res.ok) {
+    throw new Error(`City search failed: ${res.status}`);
+  }
+
   return res.json();
 };
