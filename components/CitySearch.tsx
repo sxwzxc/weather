@@ -36,18 +36,8 @@ export default function CitySearch({ onSelectCity, onClose }: CitySearchProps) {
     try {
       const data = await searchCity(q);
       if (data.results && data.results.length > 0) {
-        const sorted = data.results.sort((a: any, b: any) => {
-          const getPriority = (item: any) => {
-            if (item.feature_code === 'PPLA') return 3;
-            if (item.feature_code === 'PPLA2') return 2;
-            if (item.feature_code === 'PPL') return 1;
-            return 0;
-          };
-          const priorityDiff = getPriority(b) - getPriority(a);
-          if (priorityDiff !== 0) return priorityDiff;
-          return (b.population || 0) - (a.population || 0);
-        });
-        setResults(sorted);
+        // API 已经按相关性排序，直接使用
+        setResults(data.results);
       } else {
         setError('未找到相关城市，试试其他关键词');
         setResults([]);
@@ -110,8 +100,10 @@ export default function CitySearch({ onSelectCity, onClose }: CitySearchProps) {
           )}
 
           {results.map((r, i) => {
-            const isCity = r.feature_code === 'PPLA' || r.feature_code === 'PPLA2';
-            const cityLabel = r.feature_code === 'PPLA' ? '省会' : r.feature_code === 'PPLA2' ? '地级市' : '';
+            const cityLabel = 
+              r.feature_code === 'PPLA' ? '省会' : 
+              r.feature_code === 'PPLA2' ? '地级市' : 
+              r.feature_code === 'PPLA3' ? '区县' : '';
             
             return (
               <button
