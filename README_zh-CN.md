@@ -1,36 +1,76 @@
-# EdgeOne Pages 函数：地理位置
+# 天气应用（多数据源版）
 
-这个示例演示了如何使用 EdgeOne Pages 函数获取客户端的地理位置。
+本项目是基于 Next.js + EdgeOne Functions 的天气应用，支持多数据源自动降级。
 
-## 部署
+## 数据源支持
 
-[![使用 EdgeOne Pages 部署](https://cdnstatic.tencentcs.com/edgeone/pages/deploy.svg)](https://console.cloud.tencent.com/edgeone/pages/new?from=github&template=functions-geolocation)
+- `openmeteo`（默认）
+- `qweather`（和风天气）
+- `owm`（OpenWeatherMap）
 
-## 入门
+前端统一请求 `/weather` 网关，由网关按优先级调度与降级：
 
-首先，运行开发服务器：
+- 当指定数据源可用：返回指定源结果。
+- 当指定数据源不可用：自动切换到其他可用源并返回。
+
+## QWeather 使用说明（已按官方文档适配）
+
+参考文档：<https://dev.qweather.com/docs/>
+
+当前实现使用：
+
+- 实时天气：`/v7/weather/now`
+- 每日预报：`/v7/weather/15d`
+- 逐小时预报：`/v7/weather/168h`
+- 实时空气质量（新版本）：`/airquality/v1/current/{latitude}/{longitude}`
+
+> 注意：`/v7/air/now` 为已弃用接口（官方文档标注预计 2026-06-01 停止），本项目已切换到 `airquality/v1`。
+
+## 环境变量
+
+项目根目录提供 `.env` 模板，请按需填写：
 
 ```bash
-npm run dev
-# 或
-yarn dev
-# 或
-pnpm dev
-# 或
-bun dev
+# 本地调试函数网关地址（可留空）
+NEXT_PUBLIC_API_URL=
+
+# QWeather
+HFHOST=
+HFKEY=
+HFJWT=
+HFID=
+
+# OpenWeatherMap
+OWMKey=
+OWM_KEY=
 ```
 
-使用浏览器打开 [http://localhost:3000](http://localhost:3000) 查看结果。
+### QWeather 关键配置说明
 
-您可以通过修改 `app/page.tsx` 开始编辑页面。文件修改后页面会自动更新。
+- `HFHOST`：必须填写你在 QWeather 控制台中的**专属 API Host**（例如 `abc123xyz.def.qweatherapi.com`）。
+- 认证支持两种方式（二选一即可）：
+	- `HFKEY`（API Key）
+	- `HFJWT`（Bearer Token）
 
-该项目使用 [`next/font`](https://nextjs.org/docs/basic-features/font-optimization) 自动优化并加载 Inter，这是一种自定义的 Google 字体。
+## 启动
 
-## 了解更多
+```bash
+npm install
+npm run dev
+```
 
-要了解更多有关 Next.js 的信息，请查看以下资源：
+打开 <http://localhost:3000>
 
-- [Next.js 文档](https://nextjs.org/docs) - 了解 Next.js 的功能和 API。
-- [学习 Next.js](https://nextjs.org/learn) - 互动式 Next.js 教程。
+## 常见问题
 
-您可以查看 [Next.js 的 GitHub 仓库](https://github.com/vercel/next.js/) - 欢迎您的反馈和贡献！
+### 1) 加载天气失败 / QWeather 报错
+
+请优先检查：
+
+1. `HFHOST` 是否为你的专属 Host（不能是公共域名）。
+2. `HFKEY` / `HFJWT` 是否已正确配置。
+3. 账户是否触发 QWeather 限额或权限限制（常见 401/403/429）。
+
+### 2) 指定数据源不可用
+
+网关会自动降级到其他数据源，并在页面顶部提示自动切换信息。

@@ -267,11 +267,25 @@ export function setLocalWeatherCache(locationId: string, data: any) {
 // ===== API 调用 =====
 export const fetchWeatherData = async (lat: number, lon: number, forceRefresh = false, source: WeatherDataSource = 'openmeteo') => {
   const host = typeof window !== 'undefined' && process.env.NODE_ENV === 'development' ? process.env.NEXT_PUBLIC_API_URL : '';
-  const endpointMap: Record<WeatherDataSource, string> = { openmeteo: '/weather', qweather: '/qweather', owm: '/owm' };
-  const endpoint = endpointMap[source] || '/weather';
-  const url = `${host}${endpoint}?lat=${lat}&lon=${lon}${forceRefresh ? '&refresh=true' : ''}`;
+  const params = new URLSearchParams({
+    lat: String(lat),
+    lon: String(lon),
+    source,
+    fallback: 'true',
+  });
+
+  if (forceRefresh) {
+    params.set('refresh', 'true');
+  }
+
+  const url = `${host}/weather?${params.toString()}`;
   const res = await fetch(url);
-  const data = await res.json();
+  const data = await res.json().catch(() => ({ error: `天气请求失败（HTTP ${res.status}）` }));
+
+  if (!res.ok && !data?.error) {
+    return { error: `天气请求失败（HTTP ${res.status}）`, details: data };
+  }
+
   return data;
 };
 

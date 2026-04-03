@@ -26,6 +26,14 @@ export default function WeatherPage() {
   const [needsRefresh, setNeedsRefresh] = useState(false);
   const [useGPS, setUseGPS] = useState(false);
   const [dataSource, setDataSourceState] = useState<WeatherDataSource>('openmeteo');
+  const [sourceNotice, setSourceNotice] = useState('');
+
+  const sourceLabel = (source: string) => {
+    if (source === 'qweather') return '和风天气';
+    if (source === 'owm') return 'OpenWeatherMap';
+    if (source === 'openmeteo') return 'Open-Meteo';
+    return source;
+  };
 
   useEffect(() => {
     loadSavedLocations();
@@ -103,9 +111,21 @@ export default function WeatherPage() {
       }
       const weather = await fetchWeatherData(loc.latitude, loc.longitude, forceRefresh, activeSource);
       if (weather.error) throw new Error(weather.error);
+      const resolvedSource = ['openmeteo', 'qweather', 'owm'].includes(weather.resolved_source)
+        ? weather.resolved_source as WeatherDataSource
+        : activeSource;
+
+      if (resolvedSource !== activeSource) {
+        setDataSourceState(resolvedSource);
+        setDataSource(resolvedSource);
+        setSourceNotice(`已自动切换到 ${sourceLabel(resolvedSource)} 数据源（原数据源暂不可用）`);
+      } else {
+        setSourceNotice('');
+      }
+
       setWeatherData(weather); setLocalWeatherCache(cacheId, weather); setCacheAge(0); setNeedsRefresh(false);
     } catch (err) {
-      console.error('Load weather error:', err); setError('加载天气失败，请检查数据源配置');
+      console.error('Load weather error:', err); setError('加载天气失败，请检查数据源配置'); setSourceNotice('');
     } finally {
       setLoading(false); setRefreshing(false);
     }
@@ -195,6 +215,9 @@ export default function WeatherPage() {
               </h1>
               {cacheAge > 0 && (
                 <p className="text-white/60 text-sm mt-1">数据更新于 {timeAgo(weatherData.cached_at)}</p>
+              )}
+              {sourceNotice && (
+                <p className="text-amber-200/90 text-xs mt-1">{sourceNotice}</p>
               )}
             </div>
             <div className="flex items-center gap-2 flex-wrap">

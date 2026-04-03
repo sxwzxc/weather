@@ -1,5 +1,10 @@
 // OpenWeatherMap API 接口
 // 使用 One Call API 3.0 获取完整天气数据
+declare const weather: {
+  get: (key: string) => Promise<string | null>;
+  put: (key: string, value: string, options?: { expirationTtl?: number }) => Promise<void>;
+};
+
 export async function onRequest({ request, env }: { request: Request; env: any }) {
   const url = new URL(request.url);
   const lat = url.searchParams.get('lat');
@@ -13,10 +18,12 @@ export async function onRequest({ request, env }: { request: Request; env: any }
     });
   }
 
-  if (!env.OWMKey) {
+  const owmKey = (env.OWMKey || env.OWM_KEY || '').trim();
+
+  if (!owmKey) {
     return new Response(JSON.stringify({ 
       error: 'OpenWeatherMap API key not configured',
-      message: '请配置环境变量：OWMKey'
+      message: '请配置环境变量：OWMKey 或 OWM_KEY'
     }), {
       status: 500,
       headers: { 'content-type': 'application/json; charset=UTF-8', 'Access-Control-Allow-Origin': '*' },
@@ -50,7 +57,7 @@ export async function onRequest({ request, env }: { request: Request; env: any }
   }
 
   try {
-    const key = env.OWMKey;
+    const key = owmKey;
 
     // One Call API 3.0: 获取当前天气、小时预报、每日预报
     const oneCallUrl = `https://api.openweathermap.org/data/3.0/onecall?lat=${lat}&lon=${lon}&appid=${key}&units=metric&lang=zh_cn&exclude=minutely,alerts`;
