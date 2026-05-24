@@ -167,8 +167,28 @@ export interface CitySearchOptions {
 const LAST_LOCATION_KEY = 'weather_last_location';
 const WEATHER_CACHE_KEY = 'weather_cache_data';
 const DATA_SOURCE_KEY = 'weather_data_source';
+const RECENT_SEARCHES_KEY = 'weather_recent_searches';
 
 export type WeatherDataSource = 'openmeteo' | 'qweather' | 'owm';
+
+// 热门城市预设列表（带坐标）
+export const POPULAR_CITIES: SavedLocation[] = [
+  { id: '39.91_116.40', name: '北京', latitude: 39.91, longitude: 116.40, country: '中国', admin1: '北京市' },
+  { id: '31.23_121.47', name: '上海', latitude: 31.23, longitude: 121.47, country: '中国', admin1: '上海市' },
+  { id: '23.13_113.26', name: '广州', latitude: 23.13, longitude: 113.26, country: '中国', admin1: '广东省' },
+  { id: '22.54_114.06', name: '深圳', latitude: 22.54, longitude: 114.06, country: '中国', admin1: '广东省' },
+  { id: '30.57_104.07', name: '成都', latitude: 30.57, longitude: 104.07, country: '中国', admin1: '四川省' },
+  { id: '30.25_120.17', name: '杭州', latitude: 30.25, longitude: 120.17, country: '中国', admin1: '浙江省' },
+  { id: '34.34_108.94', name: '西安', latitude: 34.34, longitude: 108.94, country: '中国', admin1: '陕西省' },
+  { id: '32.06_118.79', name: '南京', latitude: 32.06, longitude: 118.79, country: '中国', admin1: '江苏省' },
+  { id: '29.56_106.55', name: '重庆', latitude: 29.56, longitude: 106.55, country: '中国', admin1: '重庆市' },
+  { id: '30.59_114.31', name: '武汉', latitude: 30.59, longitude: 114.31, country: '中国', admin1: '湖北省' },
+  { id: '35.69_139.69', name: '东京', latitude: 35.69, longitude: 139.69, country: '日本', admin1: '东京都' },
+  { id: '40.71_-74.01', name: '纽约', latitude: 40.71, longitude: -74.01, country: '美国', admin1: '纽约州' },
+  { id: '51.51_-0.13', name: '伦敦', latitude: 51.51, longitude: -0.13, country: '英国', admin1: '英格兰' },
+  { id: '48.86_2.35', name: '巴黎', latitude: 48.86, longitude: 2.35, country: '法国', admin1: '法兰西岛' },
+  { id: '-33.87_151.21', name: '悉尼', latitude: -33.87, longitude: 151.21, country: '澳大利亚', admin1: '新南威尔士' },
+];
 
 export async function getSavedLocations(): Promise<SavedLocation[]> {
   try {
@@ -235,6 +255,40 @@ export function getDataSource(): WeatherDataSource {
 export function setDataSource(source: WeatherDataSource) {
   if (typeof window === 'undefined') return;
   localStorage.setItem(DATA_SOURCE_KEY, source);
+}
+
+// ===== 最近搜索管理 =====
+const MAX_RECENT_SEARCHES = 8;
+
+export function getRecentSearches(): SavedLocation[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(RECENT_SEARCHES_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function addRecentSearch(loc: SavedLocation) {
+  if (typeof window === 'undefined') return;
+  try {
+    const recent = getRecentSearches();
+    // 移除重复项
+    const filtered = recent.filter((r) => r.id !== loc.id);
+    // 添加到开头
+    filtered.unshift(loc);
+    // 限制数量
+    const trimmed = filtered.slice(0, MAX_RECENT_SEARCHES);
+    localStorage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(trimmed));
+  } catch {
+    // silently fail
+  }
+}
+
+export function clearRecentSearches() {
+  if (typeof window === 'undefined') return;
+  localStorage.removeItem(RECENT_SEARCHES_KEY);
 }
 
 // ===== 本地天气缓存 =====
