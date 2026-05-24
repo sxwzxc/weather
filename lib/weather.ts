@@ -169,7 +169,7 @@ const WEATHER_CACHE_KEY = 'weather_cache_data';
 const DATA_SOURCE_KEY = 'weather_data_source';
 const RECENT_SEARCHES_KEY = 'weather_recent_searches';
 
-export type WeatherDataSource = 'openmeteo' | 'qweather' | 'owm';
+export type WeatherDataSource = 'openmeteo' | 'qweather' | 'owm' | 'nws' | 'wttrin';
 
 // 热门城市预设列表（带坐标）
 export const POPULAR_CITIES: SavedLocation[] = [
@@ -361,6 +361,34 @@ export const fetchGeoLocation = async () => {
   const host = typeof window !== 'undefined' && process.env.NODE_ENV === 'development' ? process.env.NEXT_PUBLIC_API_URL : '';
   const res = await fetch(`${host}/geo`);
   return res.json();
+};
+
+// ===== 前端兜底：直接调用 Open-Meteo（当网关失败时的最后手段） =====
+export const fetchWeatherDirectOpenMeteo = async (lat: number, lon: number) => {
+  try {
+    const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,weather_code,cloud_cover,pressure_msl,surface_pressure,wind_speed_10m,wind_direction_10m,dew_point_2m,uv_index&hourly=temperature_2m,relative_humidity_2m,precipitation_probability,precipitation,weather_code,visibility,wind_speed_10m,uv_index,dew_point_2m&daily=weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset,uv_index_max,precipitation_sum,precipitation_probability_max,wind_speed_10m_max&timezone=auto&forecast_days=16`;
+    const airUrl = `https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${lat}&longitude=${lon}&current=pm10,pm2_5,us_aqi,european_aqi&timezone=auto`;
+
+    const [weatherRes, airRes] = await Promise.all([fetch(weatherUrl), fetch(airUrl)]);
+
+    if (!weatherRes.ok) {
+      return { error: `Open-Meteo HTTP ${weatherRes.status}` };
+    }
+
+    const weatherData = await weatherRes.json();
+    const airData = airRes.ok ? await airRes.json() : null;
+
+    return {
+      ...weatherData,
+      air_quality: airData?.current || null,
+      cached_at: new Date().toISOString(),
+      location: { latitude: lat, longitude: lon },
+      data_source: 'Open-Meteo (直连)',
+      resolved_source: 'openmeteo',
+    };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : String(err) };
+  }
 };
 
 export const searchCity = async (query: string, options: CitySearchOptions = {}): Promise<CitySearchResponse> => {

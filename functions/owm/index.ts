@@ -184,6 +184,7 @@ function convertOWMToStandard(data: any, airData: any, lat: string, lon: string)
     cached_at: new Date().toISOString(),
     location: { latitude: parseFloat(lat), longitude: parseFloat(lon) },
     data_source: 'OpenWeatherMap',
+    resolved_source: 'owm',
   };
 }
 

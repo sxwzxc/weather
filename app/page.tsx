@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import CitySearch from '@/components/CitySearch';
 import {
-  fetchWeatherData, fetchGeoLocation,
+  fetchWeatherData, fetchGeoLocation, fetchWeatherDirectOpenMeteo,
   getWeatherInfo, getWindDirection, getWindLevel, getUVLevel, getAQILevel,
   getVisibilityLevel, getHumidityLevel,
   formatHour, formatDate, isToday, isTomorrow, timeAgo,
@@ -226,12 +226,16 @@ export default function WeatherPage() {
     if (source === 'qweather') return '和风天气';
     if (source === 'owm') return 'OpenWeatherMap';
     if (source === 'openmeteo') return 'Open-Meteo';
+    if (source === 'nws') return 'NWS (NOAA)';
+    if (source === 'wttrin') return 'wttr.in';
     return source;
   };
 
   const sourceEmoji = (source: string) => {
     if (source === 'qweather') return '🇨🇳';
     if (source === 'owm') return '🌐';
+    if (source === 'nws') return '🇺🇸';
+    if (source === 'wttrin') return '🌤️';
     return '🌍';
   };
 
@@ -319,20 +323,39 @@ export default function WeatherPage() {
         setSourceErrors([]);
       }
 
-      if (weather.error) throw new Error(weather.error);
-      const resolvedSource = ['openmeteo', 'qweather', 'owm'].includes(weather.resolved_source)
-        ? weather.resolved_source as WeatherDataSource
+      // 如果网关返回错误，尝试直连 Open-Meteo 作为最后兜底
+      let weatherData = weather;
+      if (weatherData.error) {
+        console.warn('[Frontend] Gateway failed, trying direct Open-Meteo fallback...');
+        const directData = await fetchWeatherDirectOpenMeteo(loc.latitude, loc.longitude);
+        if (!directData.error) {
+          weatherData = directData;
+          setSourceNotice('已自动切换到 Open-Meteo 直连（网关数据源暂不可用）');
+        } else {
+          throw new Error(weatherData.error);
+        }
+      }
+
+      if (weatherData.source_errors) {
+        setSourceErrors(weatherData.source_errors);
+      } else {
+        setSourceErrors([]);
+      }
+
+      if (weatherData.error) throw new Error(weatherData.error);
+      const resolvedSource = ['openmeteo', 'qweather', 'owm', 'nws', 'wttrin'].includes(weatherData.resolved_source)
+        ? weatherData.resolved_source as WeatherDataSource
         : activeSource;
 
-      if (resolvedSource !== activeSource) {
+      if (resolvedSource !== activeSource && !sourceNotice) {
         setDataSourceState(resolvedSource);
         setDataSource(resolvedSource);
         setSourceNotice(`已自动切换到 ${sourceLabel(resolvedSource)} 数据源（原数据源暂不可用）`);
-      } else {
+      } else if (!sourceNotice) {
         setSourceNotice('');
       }
 
-      setWeatherData(weather); setLocalWeatherCache(cacheId, weather); setCacheAge(0); setNeedsRefresh(false);
+      setWeatherData(weatherData); setLocalWeatherCache(cacheId, weatherData); setCacheAge(0); setNeedsRefresh(false);
     } catch (err) {
       console.error('Load weather error:', err);
       setError('加载天气失败，请检查数据源配置');
@@ -448,16 +471,17 @@ export default function WeatherPage() {
             </div>
             <div className="flex items-center gap-2 flex-wrap">
               {/* 数据源切换 */}
-              <div className="flex bg-white/10 rounded-xl p-1 border border-white/10">
-                {(['openmeteo', 'qweather', 'owm'] as WeatherDataSource[]).map((src) => (
+              <div className="flex bg-white/10 rounded-xl p-1 border border-white/10 flex-wrap">
+                {(['openmeteo', 'wttrin', 'nws', 'qweather', 'owm'] as WeatherDataSource[]).map((src) => (
                   <button
                     key={src}
                     onClick={() => handleSourceChange(src)}
                     className={`px-2.5 py-1.5 rounded-lg text-xs transition-all ${
                       dataSource === src ? 'bg-white/20 text-white font-medium shadow-lg' : 'text-white/50 hover:text-white/80'
                     }`}
+                    title={sourceLabel(src)}
                   >
-                    {sourceEmoji(src)} {src === 'openmeteo' ? 'Meteo' : src === 'qweather' ? '和风' : 'OWM'}
+                    {sourceEmoji(src)} {src === 'openmeteo' ? 'Meteo' : src === 'qweather' ? '和风' : src === 'owm' ? 'OWM' : src === 'nws' ? 'NWS' : 'wttr'}
                   </button>
                 ))}
               </div>
@@ -860,7 +884,7 @@ export default function WeatherPage() {
 
           {/* 页脚 */}
           <div className="text-center text-white/30 text-xs pt-6 pb-4 space-y-1">
-            <p>数据来源: {weatherData.data_source === 'QWeather' ? '和风天气 API' : weatherData.data_source === 'OpenWeatherMap' ? 'OpenWeatherMap API' : 'Open-Meteo API'}</p>
+            <p>数据来源: {weatherData.data_source || sourceLabel(weatherData.resolved_source)}</p>
             <div className="flex items-center justify-center gap-2">
               <span>Powered by EdgeOne Pages</span>
               {useGPS && <span>· 📍 GPS定位</span>}
