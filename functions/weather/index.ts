@@ -351,38 +351,30 @@ async function fetchNWSData(lat: string, lon: string, forceRefresh: boolean) {
 
     // 当前天气 = 第一个 hourly period
     const nowPeriod = hourlyPeriods[0] || periods[0];
+    // NWS 不提供云量/能见度/UV/露点/气压，不纳入字段以避免前端误判为有效数据
     const current = {
       temperature_2m: nowPeriod?.temperature || 0,
       relative_humidity_2m: nowPeriod?.relativeHumidity?.value || 50,
-      apparent_temperature: nowPeriod?.temperature || 0, // NWS 不直接提供体感
-      is_day: (nowPeriod?.isDaytime !== undefined) ? (nowPeriod.isDaytime ? 1 : 0) : 1,
-      precipitation: 0,
+      // NWS 不提供体感温度，用实际温度近似
+      apparent_temperature: nowPeriod?.temperature || 0,
+      is_day: nowPeriod?.isDaytime !== undefined ? (nowPeriod.isDaytime ? 1 : 0) : 1,
       weather_code: nwsShortToWMO(nowPeriod?.shortForecast || ''),
-      cloud_cover: 0,
-      pressure_msl: 1013,
-      surface_pressure: 1013,
       wind_speed_10m: nwsWindSpeed(nowPeriod?.windSpeed || ''),
       wind_direction_10m: nwsWindDir(nowPeriod?.windDirection || ''),
-      visibility: 10000,
-      uv_index: 0,
-      dew_point: nowPeriod?.dewpoint?.value || 0,
     };
 
-    // 逐小时
+    // 逐小时：不包含 NWS 无法提供的 visibility/uv_index/precipitation
     const hours = hourlyPeriods.slice(0, 156);
-    const hourly = {
+    const hourly: Record<string, any> = {
       time: hours.map((p: any) => p.startTime),
       temperature_2m: hours.map((p: any) => p.temperature || 0),
       relative_humidity_2m: hours.map((p: any) => p.relativeHumidity?.value || 50),
       precipitation_probability: hours.map((p: any) => p.probabilityOfPrecipitation?.value || 0),
-      precipitation: hours.map(() => 0),
       weather_code: hours.map((p: any) => nwsShortToWMO(p.shortForecast || '')),
-      visibility: hours.map(() => 10000),
       wind_speed_10m: hours.map((p: any) => nwsWindSpeed(p.windSpeed || '')),
-      uv_index: hours.map(() => 0),
     };
 
-    // 逐天预报（periods 按白天/夜晚交替，合并为每天）
+    // 逐天预报（periods 按白天/夜晚交替）
     const dayPeriods: any[] = [];
     const nightPeriods: any[] = [];
     for (const p of periods) {
@@ -391,15 +383,11 @@ async function fetchNWSData(lat: string, lon: string, forceRefresh: boolean) {
     }
     const dailyCount = Math.min(dayPeriods.length, 14);
 
-    const daily = {
+    const daily: Record<string, any> = {
       time: dayPeriods.slice(0, dailyCount).map((p: any) => p.startTime?.slice(0, 10) || ''),
       weather_code: dayPeriods.slice(0, dailyCount).map((p: any) => nwsShortToWMO(p.shortForecast || '')),
       temperature_2m_max: dayPeriods.slice(0, dailyCount).map((p: any) => p.temperature || 0),
       temperature_2m_min: nightPeriods.slice(0, dailyCount).map((p: any) => p.temperature || 0),
-      sunrise: dayPeriods.slice(0, dailyCount).map(() => ''),
-      sunset: nightPeriods.slice(0, dailyCount).map(() => ''),
-      uv_index_max: dayPeriods.slice(0, dailyCount).map(() => 0),
-      precipitation_sum: dayPeriods.slice(0, dailyCount).map(() => 0),
       precipitation_probability_max: dayPeriods.slice(0, dailyCount).map((p: any) => p.probabilityOfPrecipitation?.value || 0),
       wind_speed_10m_max: dayPeriods.slice(0, dailyCount).map((p: any) => nwsWindSpeed(p.windSpeed || '')),
     };
